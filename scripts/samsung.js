@@ -4,6 +4,7 @@ import { AndroidUiautomator2Driver } from 'appium-uiautomator2-driver';
 import { ADB } from 'appium-adb';
 import log from '../src/logger.js';
 import { waitForCondition } from 'asyncbox';
+import { finishSession } from './browserReady.js';
 
 const START_APP_WAIT_DURATION = 60000;
 
@@ -89,8 +90,19 @@ async function skipWelcomeSamsung() {
         }
       } 
     }
+  } catch (error) {
+    log.info(`walkthrough did not complete (${error.message}) — checking readiness anyway`);
   } finally {
-    await driver.deleteSession();
+    await finishSession(driver, {
+      adb,
+      pkg: samsung.pkg,
+      socket: 'Terrace_devtools_remote',
+      selectors: [
+        '//*[@resource-id="com.sec.android.app.sbrowser:id/help_intro_legal_agree_button"]',
+        '//android.widget.Button[@text="Agree"]',
+        '//android.widget.Button[@text="I agree"]',
+      ],
+    });
   }
 }
 

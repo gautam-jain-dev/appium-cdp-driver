@@ -4,6 +4,7 @@ import { AndroidUiautomator2Driver } from 'appium-uiautomator2-driver';
 import { ADB } from 'appium-adb';
 import log from '../src/logger.js';
 import { waitForCondition } from 'asyncbox';
+import { finishSession } from './browserReady.js';
 
 const START_APP_WAIT_DURATION = 60000;
 
@@ -92,8 +93,24 @@ async function skipWelcomeDuckDuckGo() {
         }
       }
     }
+  } catch (error) {
+    log.info(`walkthrough did not complete (${error.message}) — checking readiness anyway`);
   } finally {
-    await driver.deleteSession();
+    await finishSession(driver, {
+      adb,
+      pkg: duckduckgo.pkg,
+      // WebView app: the socket carries the pid, and the bare prefix would also
+      // match other apps' WebViews
+      socket: 'webview_devtools_remote',
+      pidScoped: true,
+      selectors: [
+        '//*[@resource-id="com.duckduckgo.mobile.android:id/primaryCta"]',
+        '//*[@resource-id="com.duckduckgo.mobile.android:id/bottomSheetPromoSecondaryButton"]',
+        '//*[@resource-id="com.duckduckgo.mobile.android:id/daxDialogDismissButton"]',
+        '//android.widget.Button[@text="Got it"]',
+        '//android.widget.Button[@text="Maybe later"]',
+      ],
+    });
   }
 }
 

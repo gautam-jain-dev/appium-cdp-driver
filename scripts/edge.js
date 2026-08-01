@@ -4,6 +4,7 @@ import { AndroidUiautomator2Driver } from 'appium-uiautomator2-driver';
 import { ADB } from 'appium-adb';
 import log from '../src/logger.js';
 import { waitForCondition } from 'asyncbox';
+import { finishSession } from './browserReady.js';
 
 const START_APP_WAIT_DURATION = 60000;
 
@@ -20,6 +21,12 @@ const common = {
 async function skipWelcomeEdge() {
   const adb = await ADB.createADB();
   await adb.adbExec(['shell', 'pm', 'clear', edge.pkg]);
+  // Edge keeps Chromium's first-run machinery, so the FRE can be suppressed the
+  // same way as Chrome/Brave (honored on emulators and debuggable builds)
+  await adb.adbExec([
+    'shell',
+    "echo '_ --disable-fre --no-first-run' > /data/local/tmp/chrome-command-line",
+  ]);
   const driver = new AndroidUiautomator2Driver();
   const caps = {
     platformName: "Android",
@@ -85,7 +92,8 @@ async function skipWelcomeEdge() {
         try{
           notNowButton = await findElementWithWaitForCondition(
             'xpath',
-            '//android.widget.Button[@text="Not now"]'
+            '//android.widget.Button[@text="Not now"]',
+            15000
           );
           log.info(`Not Now button is ${JSON.stringify(notNowButton, null, 2)}`);
           found = true;
@@ -199,8 +207,18 @@ async function skipWelcomeEdge() {
         }
       }
     }
+  } catch (error) {
+    log.info(`walkthrough did not complete (${error.message}) — checking readiness anyway`);
   } finally {
-    await driver.deleteSession();
+    await finishSession(driver, {
+      adb,
+      pkg: edge.pkg,
+      socket: 'chrome_devtools_remote',
+      selectors: [
+        '//android.widget.Button[@text="Confirm"]',
+        '//*[@resource-id="com.android.permissioncontroller:id/permission_allow_button"]',
+      ],
+    });
   }
 
 
