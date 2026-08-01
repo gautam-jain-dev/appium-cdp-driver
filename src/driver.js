@@ -71,9 +71,21 @@ class AppiumCDPDriver extends BaseDriver {
         maxTimeout: 10000,
       }
     );
-    const target = data.find((target) => {
-      return target.url.includes('appium.io');
-    });
+    // Prefer the page we launched, but do not require it: after a redirect, a
+    // new tab, or an onboarding page the list holds other targets, and reading
+    // webSocketDebuggerUrl off undefined fails the session with an opaque error.
+    let target = data.find((t) => t.url && t.url.includes('appium.io'));
+    if (!target) {
+      target =
+        data.find((t) => t.type === 'page' && t.webSocketDebuggerUrl) ||
+        data.find((t) => t.webSocketDebuggerUrl);
+      log.info(`No appium.io target; falling back to ${target ? target.url || target.type : 'none'}`);
+    }
+    if (!target) {
+      throw new Error(
+        `No CDP target with a webSocketDebuggerUrl in ${JSON.stringify(data)}`
+      );
+    }
     log.info(`Target found: ${target.webSocketDebuggerUrl}`);
     await openBrowser({
       port: port,

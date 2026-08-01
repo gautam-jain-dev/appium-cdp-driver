@@ -4,6 +4,7 @@ import { AndroidUiautomator2Driver } from 'appium-uiautomator2-driver';
 import { ADB } from 'appium-adb';
 import log from '../src/logger.js';
 import { waitForCondition } from 'asyncbox';
+import { finishSession } from './browserReady.js';
 
 const START_APP_WAIT_DURATION = 60000;
 
@@ -113,8 +114,10 @@ async function skipWelcomeBrave() {
       );
       await driver.click(continueButton.ELEMENT);
     }
+  } catch (error) {
+    log.info(`walkthrough did not complete (${error.message}) — checking readiness anyway`);
   } finally {
-    await driver.deleteSession();
+    await finishSession(driver, { adb, pkg: brave.pkg, socket: 'chrome_devtools_remote' });
   }
 }
 
