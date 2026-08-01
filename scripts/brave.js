@@ -20,6 +20,12 @@ const common = {
 async function skipWelcomeBrave() {
   const adb = await ADB.createADB();
   await adb.adbExec(['shell', 'pm', 'clear', 'com.brave.browser']);
+  // Suppress the first-run Welcome walkthrough (honored on emulators/debuggable builds;
+  // harmless no-op elsewhere, where the UI walkthrough below still handles it)
+  await adb.adbExec([
+    'shell',
+    "echo '_ --disable-fre --no-first-run' > /data/local/tmp/chrome-command-line",
+  ]);
   const driver = new AndroidUiautomator2Driver();
   const caps = {
     platformName: "Android",
@@ -39,7 +45,7 @@ async function skipWelcomeBrave() {
       const findElementWithWaitForCondition = async (
         strategy,
         selector,
-        timeout = 6000
+        timeout = 20000
       ) => {
         try {
           return await waitForCondition(
