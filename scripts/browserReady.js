@@ -1,3 +1,5 @@
+import fetch from 'node-fetch';
+import getPort from 'get-port';
 import log from '../src/logger.js';
 
 /**
@@ -32,15 +34,48 @@ const COMMON_SELECTORS = [
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function socketPresent(adb, socket, pkg, pidScoped) {
+/**
+ * Resolve the devtools socket name, or null if the browser has not opened it.
+ * WebView-based browsers expose webview_devtools_remote_<pid>; the bare prefix
+ * also matches other apps' WebViews, so scope it to this package's pid.
+ */
+async function resolveSocket(adb, socket, pkg, pidScoped) {
   const unix = String(await adb.adbExec(['shell', 'cat', '/proc/net/unix']));
   if (!pidScoped) {
-    return unix.includes(socket);
+    return unix.includes(socket) ? socket : null;
   }
-  // WebView-based browsers expose webview_devtools_remote_<pid>; the bare prefix
-  // also matches other apps' WebViews, so scope it to this package's pid.
   const pid = String(await adb.adbExec(['shell', 'pidof', pkg])).trim().split(/\s+/)[0];
-  return Boolean(pid) && unix.includes(`${socket}_${pid}`);
+  if (!pid) {
+    return null;
+  }
+  const scoped = `${socket}_${pid}`;
+  return unix.includes(scoped) ? scoped : null;
+}
+
+/**
+ * Ask /json/list exactly as the driver will. The socket can be up while the
+ * browser has no debuggable page — that is the "Debug list is empty or invalid"
+ * failure — so an open page is the only meaningful proof of readiness.
+ */
+async function hasDebuggablePage(adb, socketName) {
+  const port = await getPort();
+  try {
+    await adb.adbExec(['forward', `tcp:${port}`, `localabstract:${socketName}`]);
+    const response = await fetch(`http://localhost:${port}/json/list`);
+    const targets = await response.json();
+    const pages = (Array.isArray(targets) ? targets : []).filter((t) => t.webSocketDebuggerUrl);
+    log.info(`ensureBrowserReady: /json/list targets=${Array.isArray(targets) ? targets.length : -1}, with debugger url=${pages.length}`);
+    return pages.length > 0;
+  } catch (error) {
+    log.info(`ensureBrowserReady: /json/list check failed: ${error.message}`);
+    return false;
+  } finally {
+    try {
+      await adb.adbExec(['forward', '--remove', `tcp:${port}`]);
+    } catch (e) {
+      // the forward may already be gone
+    }
+  }
 }
 
 async function currentActivity(driver) {
@@ -81,15 +116,20 @@ export async function ensureBrowserReady(opts) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       // The process (and its socket) can exist while onboarding is still on
-      // screen; with no tab open /json/list is empty, which is the "Debug list
-      // is empty" failure. Require both, then open a page.
+      // screen, and even afterwards the browser may hold no debuggable page.
+      // Require onboarding gone, the socket up, and a page the driver can attach to.
       const activity = await currentActivity(driver);
       if (ONBOARDING_ACTIVITY.test(activity)) {
         log.info(`ensureBrowserReady: still on onboarding (${activity})`);
-      } else if (await socketPresent(adb, socket, pkg, pidScoped)) {
-        await openPage(adb, pkg, url);
-        await sleep(4000);
-        return true;
+      } else {
+        const socketName = await resolveSocket(adb, socket, pkg, pidScoped);
+        if (socketName) {
+          await openPage(adb, pkg, url);
+          await sleep(4000);
+          if (await hasDebuggablePage(adb, socketName)) {
+            return true;
+          }
+        }
       }
     } catch (e) {
       // fall through to the dismissal pass
