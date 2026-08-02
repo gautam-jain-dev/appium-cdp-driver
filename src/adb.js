@@ -84,6 +84,32 @@ async function getDuckDuckGoPid(browser = 'duckduckgo') {
   }
 }
 
+const PACKAGES = {
+  chrome: 'com.android.chrome',
+  brave: 'com.brave.browser',
+  opera: 'com.opera.browser',
+  duckduckgo: 'com.duckduckgo.mobile.android',
+  samsung: 'com.sec.android.app.sbrowser',
+  terrance: 'com.sec.android.app.sbrowser',
+  edge: 'com.microsoft.emmx',
+};
+
+/**
+ * Open the start URL in an already-running browser.
+ *
+ * Deliberately a plain VIEW intent rather than startApplication: the latter
+ * passes -S, which force-stops the process. That changes the pid, and for
+ * WebView-based browsers the devtools socket name carries the pid, so an
+ * existing port forward is left pointing at a socket that no longer exists.
+ */
+export async function openStartUrl(browser, url = 'https://www.appium.io') {
+  const pkg = PACKAGES[browser];
+  if (!pkg) {
+    return;
+  }
+  await adb.adbExec(['shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, pkg]);
+}
+
 export async function startApplication(browser = 'chrome') {
   const common = {
     waitDuration: START_APP_WAIT_DURATION,

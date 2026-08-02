@@ -1,5 +1,5 @@
 import { BaseDriver, errors } from '@appium/base-driver';
-import { getAdb, adbExec, startApplication } from './adb';
+import { getAdb, adbExec, startApplication, openStartUrl } from './adb';
 import { openBrowser, getConfig, goto } from 'taiko';
 import commands from './commands';
 import log from './logger';
@@ -58,11 +58,11 @@ class AppiumCDPDriver extends BaseDriver {
             // The socket is up but the browser holds no debuggable page — common
             // for WebView-based browsers just after launch. Retrying the fetch
             // alone changes nothing, so nudge the browser into opening one.
-            log.info('Debug list is empty, relaunching the browser to open a page');
+            log.info('Debug list is empty, opening the start URL to create a page');
             try {
-              await startApplication(browser);
+              await openStartUrl(browser);
             } catch (launchError) {
-              log.info(`Relaunch failed: ${launchError.message}`);
+              log.info(`Could not open the start URL: ${launchError.message}`);
             }
             throw new Error('Debug list is empty or invalid');
           }
