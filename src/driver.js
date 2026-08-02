@@ -55,6 +55,15 @@ class AppiumCDPDriver extends BaseDriver {
           log.info(`CDP response: ${JSON.stringify(data)}`);
 
           if (!Array.isArray(data) || data.length === 0) {
+            // The socket is up but the browser holds no debuggable page — common
+            // for WebView-based browsers just after launch. Retrying the fetch
+            // alone changes nothing, so nudge the browser into opening one.
+            log.info('Debug list is empty, relaunching the browser to open a page');
+            try {
+              await startApplication(browser);
+            } catch (launchError) {
+              log.info(`Relaunch failed: ${launchError.message}`);
+            }
             throw new Error('Debug list is empty or invalid');
           }
 
