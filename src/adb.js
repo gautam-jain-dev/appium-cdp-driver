@@ -76,7 +76,10 @@ async function getDuckDuckGoPid(browser = 'duckduckgo') {
   const packageName = 'com.duckduckgo.mobile.android';
   try {
     const output = await adb.adbExec(['shell', 'pidof', packageName]);
-    const pid = output.trim();
+    // pidof lists every process of the package; the socket belongs to the first
+    // (browser) process, and passing the whole list builds an unusable socket
+    // name like webview_devtools_remote_1234 5678
+    const pid = String(output).trim().split(/\s+/)[0];
     return pid || null;
   } catch (err) {
     console.error(`Unable to get PID for ${browser}:`, err.message);

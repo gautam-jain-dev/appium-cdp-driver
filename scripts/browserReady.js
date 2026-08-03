@@ -42,9 +42,13 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function resolveSocket(adb, socket, pkg, pidScoped) {
   const unix = String(await adb.adbExec(['shell', 'cat', '/proc/net/unix']));
   if (!pidScoped) {
+    // Several browsers share a socket name (chrome, brave and edge all use
+    // chrome_devtools_remote). Abstract names are unique per owner, so seeing
+    // the name proves *someone* opened it, not that we did — verifyReady()
+    // confirms ownership before trusting it.
     return unix.includes(socket) ? socket : null;
   }
-  const pid = String(await adb.adbExec(['shell', 'pidof', pkg])).trim().split(/\s+/)[0];
+  const pid = await browserPid(adb, pkg);
   if (!pid) {
     return null;
   }
@@ -53,21 +57,80 @@ async function resolveSocket(adb, socket, pkg, pidScoped) {
 }
 
 /**
- * Ask /json/list exactly as the driver will. The socket can be up while the
- * browser has no debuggable page — that is the "Debug list is empty or invalid"
- * failure — so an open page is the only meaningful proof of readiness.
+ * First pid of the package. pidof returns a space-separated list when the app
+ * has several processes, and only the first is the browser process whose
+ * WebView socket we want.
  */
-async function hasDebuggablePage(adb, socketName) {
+export async function browserPid(adb, pkg) {
+  const output = String(await adb.adbExec(['shell', 'pidof', pkg])).trim();
+  return output ? output.split(/\s+/)[0] : null;
+}
+
+async function getJson(port, path) {
+  const response = await fetch(`http://localhost:${port}${path}`);
+  return response.json();
+}
+
+/**
+ * Confirm the devtools endpoint belongs to the browser we are setting up.
+ * Chrome for Android reports the owning package in /json/version, which
+ * disambiguates the shared chrome_devtools_remote name.
+ */
+async function ownedByPackage(port, pkg) {
+  try {
+    const version = await getJson(port, '/json/version');
+    const owner = version['Android-Package'];
+    if (!owner) {
+      return true; // endpoint does not report an owner; nothing to contradict
+    }
+    if (owner !== pkg) {
+      log.info(`ensureBrowserReady: devtools socket belongs to ${owner}, not ${pkg}`);
+      return false;
+    }
+  } catch (e) {
+    log.info(`ensureBrowserReady: /json/version check failed: ${e.message}`);
+  }
+  return true;
+}
+
+/**
+ * Ask /json/list the way the driver does. The socket can be up while the
+ * browser has no page — that is the "Debug list is empty or invalid" failure —
+ * so an attachable *page* is the only meaningful proof of readiness. Workers
+ * also carry a webSocketDebuggerUrl and must not be mistaken for one.
+ */
+async function verifyReady(adb, socketName, pkg, timeoutMs = 5000, intervalMs = 500) {
   const port = await getPort();
   try {
     await adb.adbExec(['forward', `tcp:${port}`, `localabstract:${socketName}`]);
-    const response = await fetch(`http://localhost:${port}/json/list`);
-    const targets = await response.json();
-    const pages = (Array.isArray(targets) ? targets : []).filter((t) => t.webSocketDebuggerUrl);
-    log.info(`ensureBrowserReady: /json/list targets=${Array.isArray(targets) ? targets.length : -1}, with debugger url=${pages.length}`);
-    return pages.length > 0;
+    if (!(await ownedByPackage(port, pkg))) {
+      return false;
+    }
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      let pages = [];
+      let total = -1;
+      try {
+        const targets = await getJson(port, '/json/list');
+        if (Array.isArray(targets)) {
+          total = targets.length;
+          pages = targets.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+        }
+      } catch (e) {
+        log.info(`ensureBrowserReady: /json/list check failed: ${e.message}`);
+      }
+      if (pages.length > 0) {
+        log.info(`ensureBrowserReady: ${pkg} has ${pages.length} page target(s) of ${total}`);
+        return true;
+      }
+      if (Date.now() >= deadline) {
+        log.info(`ensureBrowserReady: ${pkg} has no page target (targets=${total})`);
+        return false;
+      }
+      await sleep(intervalMs);
+    }
   } catch (error) {
-    log.info(`ensureBrowserReady: /json/list check failed: ${error.message}`);
+    log.info(`ensureBrowserReady: readiness check failed: ${error.message}`);
     return false;
   } finally {
     try {
@@ -125,8 +188,10 @@ export async function ensureBrowserReady(opts) {
         const socketName = await resolveSocket(adb, socket, pkg, pidScoped);
         if (socketName) {
           await openPage(adb, pkg, url);
-          await sleep(4000);
-          if (await hasDebuggablePage(adb, socketName)) {
+          // poll rather than sleeping a fixed interval: usually the page is
+          // there within a few hundred ms, and setup should not pay for the
+          // worst case on every session
+          if (await verifyReady(adb, socketName, pkg)) {
             return true;
           }
         }
