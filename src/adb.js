@@ -1,4 +1,4 @@
-import { ADB, getSdkRootFromEnv } from 'appium-adb';
+import { ADB, DEFAULT_ADB_PORT, getSdkRootFromEnv } from 'appium-adb';
 import { fs } from '@appium/support';
 import getPort from 'get-port';
 import log from './logger';
@@ -16,14 +16,28 @@ const DEVTOOLS_SOCKET_MAP = {
   terrance: 'com.sec.android.app.sbrowser_devtools_remote',
 };
 
-export async function getAdb() {
+/**
+ * Resolve the adb server port: explicit value wins, then CDP_ADB_PORT (used by
+ * the skip-welcome scripts, which run as separate processes and receive no
+ * capabilities), then adb's default.
+ */
+export function resolveAdbPort(adbPort) {
+  const candidate = adbPort ?? process.env.CDP_ADB_PORT;
+  const port = parseInt(candidate, 10);
+  return Number.isInteger(port) && port > 0 ? port : DEFAULT_ADB_PORT;
+}
+
+export async function getAdb(adbPort) {
   try {
     if (!adb) {
-      adb = await ADB.createADB();
+      const port = resolveAdbPort(adbPort);
+      log.info(`Using adb server port ${port}`);
+      adb = await ADB.createADB({ adbPort: port });
     }
   } catch (e) {
     console.log(e);
   }
+  return adb;
 }
 
 export async function requireSdkRoot() {
