@@ -74,23 +74,40 @@ async function skipWelcomeSamsung() {
         }
       };
 
+      // The agree button is not the same on every build: newer intros label it
+      // "Continue" and do not expose help_intro_legal_agree_button. Try the id
+      // first, then the label.
+      //
+      // Note the intro also carries a "Close app" button beside it, and a
+      // SystemUI ANR dialog ("Close app" / "Wait") can sit on top of the whole
+      // screen. Only ever match the affordances below by exact text — clicking
+      // "Close app" would kill the browser we are setting up.
+      const INTRO_SELECTORS = [
+        ['id', 'com.sec.android.app.sbrowser:id/help_intro_legal_agree_button'],
+        ['xpath', '//android.widget.Button[@text="Continue"]'],
+        ['xpath', '//android.widget.Button[@text="Agree"]'],
+      ];
+
       const MAX_RETRIES = 2;
       let attempt = 0;
-      
-      while (attempt < MAX_RETRIES) {
-        try{
-          const buttonToClick = await findElementWithWaitForCondition(
-            'id',
-            'com.sec.android.app.sbrowser:id/help_intro_legal_agree_button'
-          );
-          log.info(`Button to click is ${JSON.stringify(buttonToClick, null, 2)}`);
-          await driver.click(buttonToClick.ELEMENT);
 
-        } catch(error) {
-          log.info(`Continue button not found, retrying...`);
-        } finally {
-          attempt++;
+      while (attempt < MAX_RETRIES) {
+        let clicked = false;
+        for (const [strategy, selector] of INTRO_SELECTORS) {
+          try {
+            const buttonToClick = await findElementWithWaitForCondition(strategy, selector, 4000);
+            await driver.click(buttonToClick.ELEMENT);
+            log.info(`intro dismissed via ${strategy}: ${selector}`);
+            clicked = true;
+            break;
+          } catch (error) {
+            // try the next shape
+          }
         }
+        if (!clicked) {
+          log.info('intro button not found on this attempt');
+        }
+        attempt++;
       } 
     }
     // Samsung shows a privacy-notice alert on SBrowserMainActivity, after the
