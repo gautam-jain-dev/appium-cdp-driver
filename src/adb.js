@@ -124,7 +124,12 @@ export async function openStartUrl(browser, url = 'https://www.appium.io') {
   if (!pkg) {
     return;
   }
-  await adb.adbExec(['shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, pkg]);
+  // -n <component>: a bare trailing package is not honoured by am, so the intent
+  // would go to whichever browser handles VIEW by default rather than this one
+  await adb.adbExec([
+    'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url,
+    '-n', `${pkg}/${BROWSERS[browser].activity}`,
+  ]);
 }
 
 export async function startApplication(browser = 'chrome') {

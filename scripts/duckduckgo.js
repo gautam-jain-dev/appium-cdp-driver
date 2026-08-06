@@ -102,6 +102,7 @@ async function skipWelcomeDuckDuckGo() {
     await finishSession(driver, {
       adb,
       pkg: duckduckgo.pkg,
+      component: `${duckduckgo.pkg}/${duckduckgo.activity}`,
       // WebView app: the socket carries the pid, and the bare prefix would also
       // match other apps' WebViews
       socket: 'webview_devtools_remote',

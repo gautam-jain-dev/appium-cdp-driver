@@ -99,6 +99,7 @@ async function skipWelcomeSamsung() {
     await finishSession(driver, {
       adb,
       pkg: samsung.pkg,
+      component: `${samsung.pkg}/${samsung.activity}`,
       socket: 'Terrace_devtools_remote',
       selectors: [
         '//*[@resource-id="com.sec.android.app.sbrowser:id/help_intro_legal_agree_button"]',

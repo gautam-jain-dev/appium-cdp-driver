@@ -160,8 +160,13 @@ async function currentActivity(driver) {
   }
 }
 
-async function openPage(adb, pkg, url) {
-  await adb.adbExec(['shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, pkg]);
+async function openPage(adb, pkg, component, url) {
+  // target the component: a bare trailing package is not honoured by am, and the
+  // intent would open in whichever browser handles VIEW by default
+  const target = component || pkg;
+  await adb.adbExec([
+    'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, '-n', target,
+  ]);
 }
 
 /**
@@ -170,6 +175,7 @@ async function openPage(adb, pkg, url) {
  * @param {object} opts.adb        appium-adb instance
  * @param {string} opts.pkg        browser package name
  * @param {string} opts.socket     devtools socket name (see DEVTOOLS_SOCKET_MAP)
+ * @param {string} [opts.component] pkg/activity used to open a page in this browser
  * @param {boolean} [opts.pidScoped]  socket name is suffixed with the pid (WebView apps)
  * @param {string[]} [opts.selectors] browser-specific selectors, tried before the common ones
  * @param {string} [opts.url]      page to open once the socket is up
@@ -179,6 +185,7 @@ async function openPage(adb, pkg, url) {
 export async function ensureBrowserReady(opts) {
   const {
     driver, adb, pkg, socket,
+    component,
     pidScoped = false,
     selectors = [],
     url = 'https://www.appium.io',
@@ -198,7 +205,7 @@ export async function ensureBrowserReady(opts) {
       } else {
         const socketName = await resolveSocket(adb, socket, pkg, pidScoped);
         if (socketName) {
-          await openPage(adb, pkg, url);
+          await openPage(adb, pkg, component, url);
           // poll rather than sleeping a fixed interval: usually the page is
           // there within a few hundred ms, and setup should not pay for the
           // worst case on every session
@@ -228,7 +235,7 @@ export async function ensureBrowserReady(opts) {
     } else if (attempt % 3 === 2) {
       log.info(`ensureBrowserReady: nothing to dismiss, relaunching ${pkg}`);
       try {
-        await openPage(adb, pkg, url);
+        await openPage(adb, pkg, component, url);
       } catch (e) {
         // browser may still be starting
       }

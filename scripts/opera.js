@@ -174,6 +174,7 @@ async function skipWelcomeOpera() {
     await finishSession(driver, {
       adb,
       pkg: opera.pkg,
+      component: `${opera.pkg}/${opera.activity}`,
       socket: 'com.opera.browser.devtools',
       selectors: [
         '//android.widget.Button[@text="Accept and continue"]',
