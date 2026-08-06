@@ -2,6 +2,7 @@
 
 import { AndroidUiautomator2Driver } from 'appium-uiautomator2-driver';
 import { ADB } from 'appium-adb';
+import { resolveAdbPort } from '../src/adb.js';
 import log from '../src/logger.js';
 import { waitForCondition } from 'asyncbox';
 import { finishSession } from './browserReady.js';
@@ -19,12 +20,14 @@ const common = {
 };
 
 async function skipWelcomeSamsung() {
-  const adb = await ADB.createADB();
+  const adbPort = resolveAdbPort();
+  const adb = await ADB.createADB({ adbPort });
   await adb.adbExec(['shell', 'pm', 'clear', samsung.pkg]);
   const driver = new AndroidUiautomator2Driver();
   const caps = {
     platformName: "Android",
     "appium:automationName": "UiAutomator2",
+    "appium:adbPort": adbPort,
     "appium:deviceName": "Android Device",
     "appium:appPackage": samsung.pkg,
     "appium:appActivity": samsung.activity,

@@ -2,6 +2,7 @@
 
 import { AndroidUiautomator2Driver } from 'appium-uiautomator2-driver';
 import { ADB } from 'appium-adb';
+import { resolveAdbPort } from '../src/adb.js';
 import log from '../src/logger.js';
 import { waitForCondition } from 'asyncbox';
 import { finishSession } from './browserReady.js';
@@ -19,7 +20,8 @@ const common = {
 };
 
 async function skipWelcomeBrave() {
-  const adb = await ADB.createADB();
+  const adbPort = resolveAdbPort();
+  const adb = await ADB.createADB({ adbPort });
   await adb.adbExec(['shell', 'pm', 'clear', 'com.brave.browser']);
   // Suppress the first-run Welcome walkthrough (honored on emulators/debuggable builds;
   // harmless no-op elsewhere, where the UI walkthrough below still handles it)
@@ -31,6 +33,7 @@ async function skipWelcomeBrave() {
   const caps = {
     platformName: "Android",
     "appium:automationName": "UiAutomator2",
+    "appium:adbPort": adbPort,
     "appium:deviceName": "Android Device",
     "appium:appPackage": "com.brave.browser",
     "appium:appActivity": "com.google.android.apps.chrome.Main",

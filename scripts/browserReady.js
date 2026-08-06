@@ -35,6 +35,17 @@ const COMMON_SELECTORS = [
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Targets the driver can actually attach to. Workers also carry a
+ * webSocketDebuggerUrl, so filtering on that field alone would accept a browser
+ * that has no page open — the state this check exists to reject.
+ */
+export function pickPageTargets(targets) {
+  return (Array.isArray(targets) ? targets : []).filter(
+    (t) => t && t.type === 'page' && t.webSocketDebuggerUrl
+  );
+}
+
+/**
  * Resolve the devtools socket name, or null if the browser has not opened it.
  * WebView-based browsers expose webview_devtools_remote_<pid>; the bare prefix
  * also matches other apps' WebViews, so scope it to this package's pid.
@@ -114,7 +125,7 @@ async function verifyReady(adb, socketName, pkg, timeoutMs = 5000, intervalMs = 
         const targets = await getJson(port, '/json/list');
         if (Array.isArray(targets)) {
           total = targets.length;
-          pages = targets.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+          pages = pickPageTargets(targets);
         }
       } catch (e) {
         log.info(`ensureBrowserReady: /json/list check failed: ${e.message}`);

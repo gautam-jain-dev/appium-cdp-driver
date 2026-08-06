@@ -1,4 +1,4 @@
-import { ADB, getSdkRootFromEnv } from 'appium-adb';
+import { ADB, DEFAULT_ADB_PORT, getSdkRootFromEnv } from 'appium-adb';
 import { fs } from '@appium/support';
 import getPort from 'get-port';
 import log from './logger';
@@ -16,14 +16,28 @@ const DEVTOOLS_SOCKET_MAP = {
   terrance: 'com.sec.android.app.sbrowser_devtools_remote',
 };
 
-export async function getAdb() {
+/**
+ * Resolve the adb server port: explicit value wins, then CDP_ADB_PORT (used by
+ * the skip-welcome scripts, which run as separate processes and receive no
+ * capabilities), then adb's default.
+ */
+export function resolveAdbPort(adbPort) {
+  const candidate = adbPort ?? process.env.CDP_ADB_PORT;
+  const port = parseInt(candidate, 10);
+  return Number.isInteger(port) && port > 0 ? port : DEFAULT_ADB_PORT;
+}
+
+export async function getAdb(adbPort) {
   try {
     if (!adb) {
-      adb = await ADB.createADB();
+      const port = resolveAdbPort(adbPort);
+      log.info(`Using adb server port ${port}`);
+      adb = await ADB.createADB({ adbPort: port });
     }
   } catch (e) {
     console.log(e);
   }
+  return adb;
 }
 
 export async function requireSdkRoot() {
@@ -87,14 +101,14 @@ async function getDuckDuckGoPid(browser = 'duckduckgo') {
   }
 }
 
-const PACKAGES = {
-  chrome: 'com.android.chrome',
-  brave: 'com.brave.browser',
-  opera: 'com.opera.browser',
-  duckduckgo: 'com.duckduckgo.mobile.android',
-  samsung: 'com.sec.android.app.sbrowser',
-  terrance: 'com.sec.android.app.sbrowser',
-  edge: 'com.microsoft.emmx',
+const BROWSERS = {
+  chrome: { pkg: 'com.android.chrome', activity: 'com.google.android.apps.chrome.Main' },
+  brave: { pkg: 'com.brave.browser', activity: 'com.google.android.apps.chrome.Main' },
+  opera: { pkg: 'com.opera.browser', activity: 'com.opera.android.BrowserActivity' },
+  duckduckgo: { pkg: 'com.duckduckgo.mobile.android', activity: 'com.duckduckgo.app.browser.BrowserActivity' },
+  samsung: { pkg: 'com.sec.android.app.sbrowser', activity: 'com.sec.android.app.sbrowser.SBrowserMainActivity' },
+  terrance: { pkg: 'com.sec.android.app.sbrowser', activity: 'com.sec.android.app.sbrowser.SBrowserMainActivity' },
+  edge: { pkg: 'com.microsoft.emmx', activity: 'com.microsoft.ruby.Main' },
 };
 
 /**
@@ -106,7 +120,7 @@ const PACKAGES = {
  * existing port forward is left pointing at a socket that no longer exists.
  */
 export async function openStartUrl(browser, url = 'https://www.appium.io') {
-  const pkg = PACKAGES[browser];
+  const pkg = BROWSERS[browser]?.pkg;
   if (!pkg) {
     return;
   }
@@ -114,65 +128,15 @@ export async function openStartUrl(browser, url = 'https://www.appium.io') {
 }
 
 export async function startApplication(browser = 'chrome') {
-  const common = {
+  const target = BROWSERS[browser];
+  if (!target) {
+    return;
+  }
+  log.info(`Starting ${browser}`);
+  await adb.startApp({
+    pkg: target.pkg,
+    activity: target.activity,
     waitDuration: START_APP_WAIT_DURATION,
     optionalIntentArguments: '-d www.appium.io',
-  };
-  const chrome = {
-    pkg: 'com.android.chrome',
-    activity: 'com.google.android.apps.chrome.Main',
-  };
-
-  const terrance = {
-    pkg: 'com.sec.android.app.sbrowser',
-    activity: 'com.sec.android.app.sbrowser.SBrowserMainActivity',
-  };
-
-  const brave = {
-    pkg: 'com.brave.browser',
-    activity: 'com.google.android.apps.chrome.Main',
-  };
-
-  const opera = {
-    pkg: 'com.opera.browser',
-    activity: 'com.opera.android.BrowserActivity',
-  };
-
-  const duckduckgo = {
-    pkg: 'com.duckduckgo.mobile.android',
-    activity: 'com.duckduckgo.app.browser.BrowserActivity',
-  };
-
-  const samsung = {
-    pkg: 'com.sec.android.app.sbrowser',
-    activity: 'com.sec.android.app.sbrowser.SBrowserMainActivity',
-  };
-  
-  const edge = {
-    pkg: 'com.microsoft.emmx',
-    activity: 'com.microsoft.ruby.Main',
-  };
-
-  if (browser === 'chrome') {
-    log.info(`Starting Chrome`);
-    await adb.startApp(Object.assign({}, chrome, common));
-  } else if (browser === 'terrance') {
-    log.info(`Starting Terrance`);
-    await adb.startApp(Object.assign({}, terrance, common));
-  } else if (browser === 'brave') {
-    log.info(`Starting Brave`);
-    await adb.startApp(Object.assign({}, brave, common));
-  } else if (browser === 'opera') {
-    log.info(`Starting Opera`);
-    await adb.startApp(Object.assign({}, opera, common));
-  } else if (browser === 'duckduckgo') {
-    log.info(`Starting DuckDuckGo`);
-    await adb.startApp(Object.assign({}, duckduckgo, common));
-  } else if (browser === 'samsung') {
-    log.info(`Starting Samsung Browser`);
-    await adb.startApp(Object.assign({}, samsung, common));
-  } else if (browser === 'edge') {
-    log.info(`Starting MS Edge`);
-    await adb.startApp(Object.assign({}, edge, common));
-  }
+  });
 }

@@ -19,6 +19,10 @@ class AppiumCDPDriver extends BaseDriver {
         presence: true,
         isString: true,
       },
+      adbPort: {
+        isNumber: false,
+        presence: false,
+      },
     };
   }
 
@@ -26,7 +30,7 @@ class AppiumCDPDriver extends BaseDriver {
     console.log(await getConfig('local'));
     const res = await super.createSession(w3cCaps);
     const browser = w3cCaps.alwaysMatch['browserName'];
-    await getAdb();
+    await getAdb(w3cCaps.alwaysMatch['appium:adbPort']);
     let port;
     if (browser === 'duckduckgo') {
       await startApplication(browser);
