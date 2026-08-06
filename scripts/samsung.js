@@ -93,6 +93,24 @@ async function skipWelcomeSamsung() {
         }
       } 
     }
+    // Samsung shows a privacy-notice alert on SBrowserMainActivity, after the
+    // intro rather than as part of it, so the branch above never sees it. It does
+    // not block the devtools socket — the page loads underneath — so the
+    // readiness pass has nothing to react to and the dialog would sit over the
+    // page for the whole session, swallowing taps meant for the content.
+    for (const selector of [
+      '//android.widget.Button[@resource-id="android:id/button1" and @text="Continue"]',
+      '//android.widget.Button[@text="Continue"]',
+    ]) {
+      try {
+        const dialogButton = await driver.findElement('xpath', selector);
+        await driver.click(dialogButton.ELEMENT);
+        log.info(`dismissed post-intro dialog via ${selector}`);
+        break;
+      } catch (error) {
+        // not shown on this launch
+      }
+    }
   } catch (error) {
     log.info(`walkthrough did not complete (${error.message}) — checking readiness anyway`);
   } finally {
